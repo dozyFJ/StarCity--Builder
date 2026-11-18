@@ -52,22 +52,25 @@ pub struct ActiveBoost {
 pub const CITY_SIDE: usize = 8;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Building { Road, House, Shop, Park }
+pub enum Building { Road, House, Shop, Park, Lab, Workshop }
 
 impl Building {
-    pub const ALL: [Self; 4] = [Self::Road, Self::House, Self::Shop, Self::Park];
+    pub const ALL: [Self; 6] = [Self::Road, Self::House, Self::Shop, Self::Park, Self::Lab, Self::Workshop];
 
     pub fn name(self) -> &'static str {
-        match self { Self::Road => "Дорога", Self::House => "Дом", Self::Shop => "Магазин", Self::Park => "Парк" }
+        match self { Self::Road => "Дорога", Self::House => "Дом", Self::Shop => "Магазин", Self::Park => "Парк", Self::Lab => "Лаборатория", Self::Workshop => "Мастерская" }
     }
 
     pub fn cost(self) -> f64 {
-        match self { Self::Road => 25.0, Self::House => 120.0, Self::Shop => 180.0, Self::Park => 75.0 }
+        match self { Self::Road => 25.0, Self::House => 120.0, Self::Shop => 180.0, Self::Park => 75.0, Self::Lab => 450.0, Self::Workshop => 650.0 }
     }
 
     pub fn income(self) -> f64 {
-        match self { Self::Road => 0.0, Self::House => 2.0, Self::Shop => 5.0, Self::Park => 1.0 }
+        match self { Self::Road => 0.0, Self::House => 2.0, Self::Shop => 5.0, Self::Park => 1.0, Self::Lab => 0.0, Self::Workshop => 14.0 }
     }
+
+    pub fn required_population(self) -> u32 { if self == Self::Lab { 9 } else { 0 } }
+    pub fn research_cost(self) -> f64 { if self == Self::Workshop { 60.0 } else { 0.0 } }
 
     pub fn residents(self) -> u32 { if self == Self::House { 3 } else { 0 } }
 }
@@ -75,6 +78,7 @@ impl Building {
 #[derive(Debug, Clone)]
 pub struct Game {
     pub coins: f64,
+    pub research: f64,
     pub base_income: f64,
     pub upgrades: u32,
     pub tab: Tab,
@@ -100,7 +104,7 @@ pub struct Game {
 impl Default for Game {
     fn default() -> Self {
         Self {
-            coins: 300.0, base_income: 1.0, upgrades: 0, tab: Tab::Home, paused: false,
+            coins: 300.0, research: 0.0, base_income: 1.0, upgrades: 0, tab: Tab::Home, paused: false,
             city_xp: 0, total_earned: 0.0, played_seconds: 0.0, rebirths: 0,
             pets: Vec::new(), equipped_pet: None, hatch: None, pets_open: false,
             equipped_pets: Vec::new(), interface_open: false, dark_mode: false,
@@ -115,7 +119,7 @@ impl Default for Game {
 impl Game {
     pub fn build(&mut self, index: usize, building: Building) -> bool {
         if self.paused || self.hatch.is_some() || self.interface_open || self.pets_open
-            || self.coins < building.cost()
+            || self.coins < building.cost() || !self.meets_building_requirements(building)
         {
             return false;
         }
@@ -123,12 +127,21 @@ impl Game {
         if plot.is_some() { return false; }
         *plot = Some(building);
         self.coins -= building.cost();
+        self.research -= building.research_cost();
         self.city_xp = self.city_xp.saturating_add(if building == Building::Road { 2 } else { 10 });
         for &pet in &self.equipped_pets {
             let xp = self.pet_xp.entry(pet).or_default();
             *xp = xp.saturating_add(1);
         }
         true
+    }
+
+    pub fn meets_building_requirements(&self, building: Building) -> bool {
+        self.population() >= building.required_population() && self.research >= building.research_cost()
+    }
+
+    pub fn research_per_second(&self) -> f64 {
+        self.plots.iter().filter(|plot| **plot == Some(Building::Lab)).count() as f64
     }
 
     pub fn population(&self) -> u32 { self.plots.iter().flatten().map(|building| building.residents()).sum() }
@@ -140,6 +153,7 @@ impl Game {
         let income = self.coins_per_second() * dt;
         self.coins += income;
         self.total_earned += income;
+        self.research += self.research_per_second() * dt;
         self.played_seconds += dt;
         if let Some(hatch) = &mut self.hatch { hatch.elapsed += dt; }
     }
@@ -167,6 +181,7 @@ impl Game {
     pub fn rebirth(&mut self)->bool {
         if self.paused||self.hatch.is_some()||self.coins<self.rebirth_price() { return false; }
         self.coins = 300.0;
+        self.research = 0.0;
         self.base_income = 1.0;
         self.upgrades = 0;
         self.plots.fill(None);
@@ -278,11 +293,12 @@ impl Game {
         let plots: String = self.plots.iter().map(|plot| match plot {
             None => '.', Some(Building::Road) => 'r', Some(Building::House) => 'h',
             Some(Building::Shop) => 's', Some(Building::Park) => 'p',
+            Some(Building::Lab) => 'l', Some(Building::Workshop) => 'w',
         }).collect();
         let xp = self.pet_xp.iter().map(|(index, xp)| format!("{index}:{xp}")).collect::<Vec<_>>().join(",");
-        format!("STAR_CITY_1\n{} {} {} {} {} {} {} {}\n{plots}\n{pets}\n{team}\n{xp}\n",
+        format!("STAR_CITY_1\n{} {} {} {} {} {} {} {} {}\n{plots}\n{pets}\n{team}\n{xp}\n",
             self.coins, self.base_income, self.upgrades, self.city_xp, self.total_earned,
-            self.played_seconds, self.rebirths, self.dark_mode)
+            self.played_seconds, self.rebirths, self.dark_mode, self.research)
     }
 
     pub fn from_save(text: &str) -> Option<Self> {
@@ -298,7 +314,8 @@ impl Game {
         game.played_seconds = fields.next()?.parse().ok()?;
         game.rebirths = fields.next()?.parse().ok()?;
         game.dark_mode = fields.next()?.parse().ok()?;
-        if ![game.coins, game.base_income, game.total_earned, game.played_seconds]
+        game.research = fields.next().map(str::parse).transpose().ok()?.unwrap_or(0.0);
+        if ![game.coins, game.base_income, game.total_earned, game.played_seconds, game.research]
             .into_iter().all(|value| value.is_finite() && value >= 0.0)
         { return None; }
 
@@ -307,7 +324,8 @@ impl Game {
         for (plot, &kind) in game.plots.iter_mut().zip(plots) {
             *plot = match kind {
                 b'.' => None, b'r' => Some(Building::Road), b'h' => Some(Building::House),
-                b's' => Some(Building::Shop), b'p' => Some(Building::Park), _ => return None,
+                b's' => Some(Building::Shop), b'p' => Some(Building::Park),
+                b'l' => Some(Building::Lab), b'w' => Some(Building::Workshop), _ => return None,
             };
         }
         for id in lines.next()?.split(',').filter(|id| !id.is_empty()).take(1001) {
@@ -368,6 +386,25 @@ mod tests {
         assert_eq!(game.building_count(), 0);
         assert_eq!(game.pets, vec![PetKind::Cat]);
         assert_eq!(game.rebirth_bonus(), 2.0);
+    }
+
+    #[test]
+    fn labs_and_research_gate_construction_and_survive_save() {
+        let mut game = Game::default();
+        game.coins = 2_000.0;
+        assert!(!game.build(3, Building::Lab));
+        for plot in 0..3 { assert!(game.build(plot, Building::House)); }
+        assert!(game.build(3, Building::Lab));
+        game.tick(59.0);
+        assert!(!game.build(4, Building::Workshop));
+        game.tick(1.0);
+        let mut game = Game::from_save(&game.save_text()).unwrap();
+        assert!(game.build(4, Building::Workshop));
+        assert_eq!(game.research, 0.0);
+        assert_eq!(game.coins_per_second(), 21.0);
+        let older = Game::default().save_text();
+        let older = older.replacen(" false 0\n", " false\n", 1);
+        assert_eq!(Game::from_save(&older).unwrap().research, 0.0);
     }
 
     #[test]
