@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+ <uses-permission android:name="android.permission.INTERNET" />
+ <application android:icon="@drawable/ic_launcher" android:label="StarCity Builder" android:allowBackup="false"
+   android:extractNativeLibs="true" android:theme="@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen">
+  <meta-data android:name="button.ota.build" android:value="${otaBuild}" />
+  <meta-data android:name="button.ota.saveformat" android:value="f${otaSaveFormat}" />
+  <meta-data android:name="button.ota.shellhash" android:value="${otaShellHash}" />
+  <meta-data android:name="button.ota.sequence" android:value="s${otaSequence}" />
+  <activity android:name="com.dozyfj.starcity.ota.NativeHostActivity" android:exported="true"
+    android:screenOrientation="portrait" android:configChanges="orientation|keyboardHidden|screenSize|smallestScreenSize|screenLayout|uiMode">
+   <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+   <meta-data android:name="android.app.lib_name" android:value="starcity_builder" />
+  </activity>
+  <activity android:name="com.dozyfj.starcity.ota.RestartActivity" android:exported="false" android:process=":ota" />
+ </application>
+</manifest>

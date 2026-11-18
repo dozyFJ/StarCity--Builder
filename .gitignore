@@ -1,0 +1,9 @@
+/target/
+/build/
+/.gradle/
+/android-shell/.gradle/
+/android-shell/**/build/
+/android-shell/app/src/main/jniLibs/
+*.keystore
+*.p12
+__pycache__/
