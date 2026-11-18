@@ -11,7 +11,6 @@ pub fn show(ui: &mut egui::Ui, game: &mut Game) {
     ui.horizontal_wrapped(|ui| {
         ui.label(format!("Жители {}", game.population()));
         ui.label(format!("Доход {}/сек", amount(game.coins_per_second())));
-        ui.label(format!("Наука {} (+{}/сек)", amount(game.research), amount(game.research_per_second())));
         ui.label(format!("Занято {}/{}", game.building_count(), game.plots.len()));
     });
     ui.separator();
@@ -23,17 +22,7 @@ pub fn show(ui: &mut egui::Ui, game: &mut Game) {
             }
         });
     });
-    let selected = game.selected_building;
-    let instruction = if game.population() < selected.required_population() {
-        format!("Нужно жителей: {}/{}", game.population(), selected.required_population())
-    } else if game.research < selected.research_cost() {
-        format!("Нужно науки: {}/{}", amount(game.research), amount(selected.research_cost()))
-    } else if game.coins < selected.cost() {
-        format!("Нужно монет: {}", amount(selected.cost()))
-    } else {
-        "Нажми на свободный участок".into()
-    };
-    ui.label(RichText::new(instruction).size(11.0));
+    ui.label(RichText::new("Выбери постройку и нажми на свободный участок").size(11.0));
 
     egui::ScrollArea::vertical().id_salt("city_map").max_height((ui.available_height() - 60.0).max(0.0)).show(ui, |ui| {
         let side = ((ui.available_width() - 22.0) / CITY_SIDE as f32).clamp(16.0, 64.0);
@@ -78,19 +67,6 @@ fn draw_building(p: &egui::Painter, rect: Rect, building: Building) {
                 let tree = center + vec2(rect.width() * offset, rect.height() * offset);
                 p.circle_filled(tree + vec2(1.0, 2.0), rect.width() * 0.23, C::from_rgb(39,100,73));
                 p.circle_filled(tree, rect.width() * 0.19, C::from_rgb(148,214,121));
-            }
-        }
-        Building::Lab | Building::Workshop => {
-            let lab = building == Building::Lab;
-            let casing = if lab { C::from_rgb(173,205,211) } else { C::from_rgb(226,174,118) };
-            let cap = if lab { C::from_rgb(57,117,128) } else { C::from_rgb(133,72,60) };
-            let body = rect.shrink2(rect.size() * 0.12);
-            p.rect_filled(body.translate(vec2(2.0, 2.0)), 2.0, C::from_black_alpha(80));
-            p.rect_filled(body, 2.0, casing);
-            p.rect_filled(Rect::from_min_size(body.min, vec2(body.width(), body.height() * 0.28)), 1.0, cap);
-            for x in [-0.22, 0.0, 0.22] {
-                let window = center + vec2(body.width() * x, body.height() * 0.06);
-                p.rect_filled(Rect::from_center_size(window, body.size() * 0.13), 0.0, cap);
             }
         }
         Building::House | Building::Shop => {
